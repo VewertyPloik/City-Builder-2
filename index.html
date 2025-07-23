@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>City Builder 2</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    background: #eef2f3;
+    margin: 0; padding: 10px;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #homeScreen, #gameScreen, #howToPlayScreen {
+    max-width: 800px;
+    margin: 0 auto;
+    text-align: center;
+  }
+  #gameScreen {
+    display: none;
+  }
+  #grid {
+    display: grid;
+    grid-template-columns: repeat(16, 40px);
+    grid-template-rows: repeat(16, 40px);
+    gap: 2px;
+    margin: 10px auto;
+    background: #ccc;
+    border: 2px solid #999;
+    width: max-content;
+    -webkit-user-select:none;
+    -moz-user-select:none;
+    -ms-user-select:none;
+    user-select:none;
+  }
+  .tile {
+    width: 40px;
+    height: 40px;
+    background: #fff;
+    border: 1px solid #bbb;
+    font-size: 28px;
+    line-height: 40px;
+    text-align: center;
+    cursor: pointer;
+    user-select: none;
+    touch-action: manipulation;
+  }
+  #topBar {
+    margin-bottom: 10px;
+    font-size: 18px;
+  }
+  #topBar span {
+    margin-right: 20px;
+  }
+  #controls {
+    margin-bottom: 10px;
+  }
+  button, select {
+    padding: 10px 16px;
+    margin: 0 8px 8px 0;
+    font-size: 18px;
+    cursor: pointer;
+    border-radius: 6px;
+    border: 1px solid #888;
+    background-color: #f0f0f0;
+    user-select:none;
+    touch-action: manipulation;
+    transition: background-color 0.2s ease;
+  }
+  button:active, button:hover {
+    background-color: #ddd;
+  }
+  select {
+    min-width: 180px;
+  }
+  .popupOverlay {
+    position: fixed;
+    top:0; left:0; right:0; bottom:0;
+    background: rgba(0,0,0,0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+  .popupContent {
+    background: white;
+    padding: 20px;
+    border-radius: 6px;
+    width: 320px;
+    max-height: 70vh;
+    overflow-y: auto;
+    box-shadow: 0 0 10px #00000055;
+    text-align: left;
+    font-size: 18px;
+  }
+  .popupContent h2 {
+    margin-top: 0;
+    font-size: 22px;
+  }
+  .popupContent button {
+    margin-top: 12px;
+    padding: 10px 14px;
+    font-size: 18px;
+    cursor: pointer;
+    border-radius: 6px;
+    border: 1px solid #888;
+    background-color: #f0f0f0;
+    user-select:none;
+    touch-action: manipulation;
+    transition: background-color 0.2s ease;
+  }
+  .popupContent button:active, .popupContent button:hover {
+    background-color: #ddd;
+  }
+</style>
+</head>
+<body>
+
+<!-- Home Screen -->
+<div id="homeScreen">
+  <h1>City Builder 2</h1>
+  <button id="startGameBtn">Start Game</button>
+  <button id="howToPlayBtn">How to Play</button>
+</div>
+
+<!-- How to Play Screen -->
+<div id="howToPlayScreen" style="display:none;">
+  <h2>How to Play</h2>
+  <p>
+    Build your city by selecting a building and clicking on the grid to place it.<br/>
+    Houses need power plants and water towers within 3 blocks to increase population.<br/>
+    Each building generates income every minute, which you collect automatically.<br/>
+    Click a building on the grid to upgrade it up to level 3 or delete it for a full refund.<br/>
+    Manage your money and population carefully to grow your city.<br/>
+  </p>
+  <button id="backToHomeFromHowTo">Back</button>
+</div>
+
+<!-- Game Screen -->
+<div id="gameScreen">
+  <div id="topBar">
+    <span>💰 Money: $<span id="money">0</span></span>
+    <span>👥 Population: <span id="population">0</span></span>
+    <span>⏳ Next Paycheck: <span id="paycheckTimer">60</span>s</span>
+    <button id="backToHomeBtn" style="float:right;">Home</button>
+  </div>
+
+  <div id="controls">
+    <select id="buildingSelect" aria-label="Select building to construct">
+      <option value="">-- Select Building --</option>
+    </select>
+    <button id="deleteBtn" aria-pressed="false">Delete Mode: Off</button>
+    <button id="earningsBtn">View Earnings</button>
+  </div>
+
+  <div id="grid" role="grid" aria-label="City building grid"></div>
+</div>
+
+<!-- Upgrade/Delete Popup -->
+<div id="buildingPopup" class="popupOverlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="popupBuildingName">
+  <div class="popupContent">
+    <h2 id="popupBuildingName"></h2>
+    <p id="popupBuildingInfo" style="white-space: pre-line;"></p>
+    <button id="upgradeBuildingBtn">Upgrade Building</button>
+    <button id="deleteBuildingBtn">Delete Building</button>
+    <button id="closeBuildingPopupBtn">Close</button>
+  </div>
+</div>
+
+<!-- Earnings Popup -->
+<div id="earningsPopup" class="popupOverlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="earningsTitle">
+  <div class="popupContent">
+    <h2 id="earningsTitle">Your Income Sources</h2>
+    <ul id="earningsList"></ul>
+    <button id="closeEarningsBtn">Close</button>
+  </div>
+</div>
+
+<!-- Offline Earnings Popup -->
+<div id="offlineEarningsPopup" class="popupOverlay" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="offlineEarningsTitle">
+  <div class="popupContent" style="text-align:center;">
+    <h2 id="offlineEarningsTitle">Offline Earnings</h2>
+    <p id="offlineEarningsAmount"></p>
+    <button id="collectOfflineEarningsBtn">Collect</button>
+  </div>
+</div>
+
+<script>
+  // Data and state
+  const gridSize = 16;
+  const buildingsData = [
+    { name: "House", emoji: "🏠", cost: 100, income: [5,10,20], population: [3,5,8] },
+    { name: "Supermarket", emoji: "🛒", cost: 200, income: [20,30,50] },
+    { name: "Power Plant", emoji: "⚡", cost: 300, income: [15,30,50] },
+    { name: "Water Tower", emoji: "💧", cost: 250, income: [10,25,40] },
+    { name: "Factory", emoji: "🏭", cost: 400, income: [25,40,60] },
+    { name: "Bank", emoji: "🏦", cost: 500, income: [50,80,120] },
+    { name: "School", emoji: "🚌", cost: 300, income: [30,50,70] },
+    { name: "Airport", emoji: "🛩️", cost: 1000, income: [100,150,200] },
+    { name: "Hospital", emoji: "🚑", cost: 250, income: [10,20,30] },
+    { name: "Subway", emoji: "🚇", cost: 250, income: [15,30,50] },
+    { name: "Fire Station", emoji: "🚒", cost: 250, income: [20,30,50] },
+    { name: "Music Store", emoji: "🏤", cost: 300, income: [35,50,70] },
+    { name: "Apartment", emoji: "🏢", cost: 1000, income: [60,90,130] },
+    { name: "Amusement Park", emoji: "🎢", cost: 1000, income: [100,140,190] },
+    { name: "Gas Station", emoji: "⛽️", cost: 150, income: [10,20,35] },
+    { name: "Mall", emoji: "🏬", cost: 800, income: [70,100,140] },
+    { name: "Office", emoji: "🏢", cost: 700, income: [60,90,120] },
+    { name: "Bar", emoji: "🍺", cost: 250, income: [30,45,65] },
+    { name: "Gym", emoji: "🏋️", cost: 300, income: [35,55,80] },
+    { name: "Park", emoji: "🌳", cost: 150, income: [15,25,40] },
+  ];
+
+  let cityGrid = new Array(gridSize * gridSize).fill(null);
+  let money = 1000;
+  let population = 0;
+  let paycheckTimer = 60;
+  let deleteMode = false;
+  let selectedBuilding = "";
+  let buildingPopupIndex = null;
+  let lastTileClick = 0;
+
+  // DOM Elements
+  const homeScreen = document.getElementById("homeScreen");
+  const gameScreen = document.getElementById("gameScreen");
+  const howToPlayScreen = document.getElementById("howToPlayScreen");
+  const gridDiv = document.getElementById("grid");
+  const moneySpan = document.getElementById("money");
+  const populationSpan = document.getElementById("population");
+  const paycheckSpan = document.getElementById("paycheckTimer");
+  const buildingSelect = document.getElementById("buildingSelect");
+  const deleteBtn = document.getElementById("deleteBtn");
+  const earningsBtn = document.getElementById("earningsBtn");
+  const backToHomeBtn = document.getElementById("backToHomeBtn");
+  const startGameBtn = document.getElementById("startGameBtn");
+  const howToPlayBtn = document.getElementById("howToPlayBtn");
+  const backToHomeFromHowTo = document.getElementById("backToHomeFromHowTo");
+
+  const buildingPopup = document.getElementById("buildingPopup");
+  const popupBuildingName = document.getElementById("popupBuildingName");
+  const popupBuildingInfo = document.getElementById("popupBuildingInfo");
+  const upgradeBuildingBtn = document.getElementById("upgradeBuildingBtn");
+  const deleteBuildingBtn = document.getElementById("deleteBuildingBtn");
+  const closeBuildingPopupBtn = document.getElementById("closeBuildingPopupBtn");
+
+  const earningsPopup = document.getElementById("earningsPopup");
+  const earningsList = document.getElementById("earningsList");
+  const closeEarningsBtn = document.getElementById("closeEarningsBtn");
+
+  const offlineEarningsPopup = document.getElementById("offlineEarningsPopup");
+  const offlineEarningsAmount = document.getElementById("offlineEarningsAmount");
+  const collectOfflineEarningsBtn = document.getElementById("collectOfflineEarningsBtn");
+
+  // Save/load keys
+  const STORAGE_KEY = "cityBuilder2_save";
+  const LAST_ONLINE_TIME_KEY = "cityBuilder2_lastOnlineTime";
+
+  // Save game state to localStorage
+  function saveGame(){
+    const saveData = {
+      money,
+      population,
+      paycheckTimer,
+      deleteMode,
+      selectedBuilding,
+      cityGrid,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(saveData));
+    // Save last online time as well when game is active
+    localStorage.setItem(LAST_ONLINE_TIME_KEY, Date.now());
+  }
+
+  // Load game state from localStorage
+  function loadGame(){
+    try {
+      const dataStr = localStorage.getItem(STORAGE_KEY);
+      if(!dataStr) return false;
+      const data = JSON.parse(dataStr);
+      if(data.money !== undefined) money = data.money;
+      if(data.population !== undefined) population = data.population;
+      if(data.paycheckTimer !== undefined) paycheckTimer = data.paycheckTimer;
+      if(data.deleteMode !== undefined) deleteMode = data.deleteMode;
+      if(data.selectedBuilding !== undefined) selectedBuilding = data.selectedBuilding;
+      if(data.cityGrid !== undefined && data.cityGrid.length === gridSize * gridSize) {
+        cityGrid = data.cityGrid;
+      }
+      return true;
+    } catch(e){
+      console.warn("Failed to load game data:", e);
+      return false;
+    }
+  }
+
+  // Populate building selection dropdown
+  function populateBuildingSelect(){
+    buildingSelect.innerHTML = '<option value="">-- Select Building --</option>';
+    buildingsData.forEach((b,i) => {
+      const option = document.createElement("option");
+      option.value = i;
+      option.textContent = `${b.name} ${b.emoji} ($${b.cost})`;
+      buildingSelect.appendChild(option);
+    });
+  }
+
+  // Update UI elements
+  function updateUI(){
+    moneySpan.textContent = money.toFixed(0);
+    populationSpan.textContent = population;
+    paycheckSpan.textContent = paycheckTimer;
+    deleteBtn.textContent = deleteMode ? "Delete Mode: On" : "Delete Mode: Off";
+    deleteBtn.setAttribute("aria-pressed", deleteMode);
+    buildingSelect.value = selectedBuilding;
+    renderGrid();
+  }
+
+  // Render grid tiles
+  function renderGrid(){
+    gridDiv.innerHTML = "";
+    cityGrid.forEach((tile, idx) => {
+      const tileDiv = document.createElement("div");
+      tileDiv.className = "tile";
+      tileDiv.dataset.index = idx;
+      if(tile){
+        const bData = buildingsData[tile.buildingIndex];
+        tileDiv.textContent = bData.emoji + (tile.level > 1 ? tile.level : "");
+        tileDiv.title = `${bData.name} (Level ${tile.level})`;
+      } else {
+        tileDiv.textContent = "";
+        tileDiv.title = "";
+      }
+      tileDiv.addEventListener("click", () => {
+        const now = Date.now();
+        if(now - lastTileClick < 200) return;
+        lastTileClick = now;
+
+        if(deleteMode && cityGrid[idx]){
+          deleteBuildingAt(idx);
+        } else if(cityGrid[idx]){
+          openBuildingPopup(idx);
+        } else if(!deleteMode && selectedBuilding !== ""){
+          placeBuilding(idx);
+        }
+      });
+      tileDiv.addEventListener("keydown", e => {
+        if(e.key === "Enter" || e.key === " "){
+          e.preventDefault();
+          tileDiv.click();
+        }
+      });
+      gridDiv.appendChild(tileDiv);
+    });
+  }
+
+  // Place building on empty tile
+  function placeBuilding(idx){
+    if(cityGrid[idx]) return; // occupied
+    const bIndex = parseInt(selectedBuilding);
+    if(isNaN(bIndex)) return;
+    const bData = buildingsData[bIndex];
+    if(money < bData.cost){
+      alert("Not enough money!");
+      return;
+    }
+    money -= bData.cost;
+    cityGrid[idx] = { buildingIndex: bIndex, level: 1 };
+    updatePopulation();
+    saveGame();
+    updateUI();
+  }
+
+  // Open building popup for upgrade/delete
+  function openBuildingPopup(idx){
+    buildingPopupIndex = idx;
+    const tile = cityGrid[idx];
+    if(!tile) return;
+    const bData = buildingsData[tile.buildingIndex];
+
+    popupBuildingName.textContent = `${bData.name} ${bData.emoji}`;
+    let infoText = `Level: ${tile.level}\nCost: $${bData.cost}\nIncome: $${bData.income[tile.level-1]}/min`;
+    if(bData.population){
+      infoText += `\nPopulation: ${bData.population[tile.level-1]}`;
+    }
+    if(tile.level >= 3){
+      infoText += `\n\nMax level reached`;
+      upgradeBuildingBtn.disabled = true;
+    } else {
+      upgradeBuildingBtn.disabled = false;
+      const nextCost = Math.round(bData.cost * (tile.level + 1) * 0.5);
+      infoText += `\nUpgrade Cost: $${nextCost}`;
+    }
+    popupBuildingInfo.textContent = infoText;
+
+    buildingPopup.style.display = "flex";
+  }
+
+  // Close building popup
+  function closeBuildingPopup(){
+    buildingPopup.style.display = "none";
+    buildingPopupIndex = null;
+  }
+
+  // Upgrade building
+  function upgradeBuilding(){
+    if(buildingPopupIndex === null) return;
+    const tile = cityGrid[buildingPopupIndex];
+    if(!tile) return;
+    const bData = buildingsData[tile.buildingIndex];
+    if(tile.level >= 3) return;
+    const nextCost = Math.round(bData.cost * (tile.level + 1) * 0.5);
+    if(money < nextCost){
+      alert("Not enough money!");
+      return;
+    }
+    money -= nextCost;
+    tile.level++;
+    updatePopulation();
+    saveGame();
+    updateUI();
+    openBuildingPopup(buildingPopupIndex);
+  }
+
+  // Delete building with full refund
+  function deleteBuildingAt(idx){
+    const tile = cityGrid[idx];
+    if(!tile) return;
+    const bData = buildingsData[tile.buildingIndex];
+    // Refund base cost + upgrades costs approx
+    let refund = bData.cost;
+    for(let lvl = 2; lvl <= tile.level; lvl++){
+      refund += Math.round(bData.cost * lvl * 0.5);
+    }
+    money += refund;
+    cityGrid[idx] = null;
+    updatePopulation();
+    saveGame();
+    updateUI();
+    if(buildingPopupIndex === idx) closeBuildingPopup();
+  }
+
+  // Update population (houses only count if powered & watered)
+  function updatePopulation(){
+    population = 0;
+    for(let idx=0; idx < cityGrid.length; idx++){
+      const tile = cityGrid[idx];
+      if(tile){
+        const bData = buildingsData[tile.buildingIndex];
+        if(bData.name === "House"){
+          if(hasPowerAndWaterNearby(idx)){
+            population += bData.population[tile.level-1];
+          }
+        }
+      }
+    }
+  }
+
+  // Check power plant and water tower within 3 blocks (Manhattan distance)
+  function hasPowerAndWaterNearby(idx){
+    const coord = indexToCoord(idx);
+    let powerFound = false;
+    let waterFound = false;
+    for(let i=0; i < cityGrid.length; i++){
+      if(cityGrid[i]){
+        const bData = buildingsData[cityGrid[i].buildingIndex];
+        if(distance(coord, indexToCoord(i)) <= 3){
+          if(bData.name === "Power Plant") powerFound = true;
+          if(bData.name === "Water Tower") waterFound = true;
+        }
+      }
+      if(powerFound && waterFound) return true;
+    }
+    return false;
+  }
+
+  // Helper: index to x,y coordinate
+  function indexToCoord(idx){
+    return { x: idx % gridSize, y: Math.floor(idx / gridSize) };
+  }
+
+  // Manhattan distance between two coords
+  function distance(a,b){
+    return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+  }
+
+  // Calculate total income per minute
+  function calculateIncome(){
+    let total = 0;
+    cityGrid.forEach(tile => {
+      if(tile){
+        const bData = buildingsData[tile.buildingIndex];
+        if(bData.income){
+          total += bData.income[tile.level-1];
+        }
+      }
+    });
+    return total;
+  }
+
+  // Paycheck tick every second
+  function paycheckTick(){
+    paycheckTimer--;
+    if(paycheckTimer <= 0){
+      const income = calculateIncome();
+      money += income;
+      paycheckTimer = 60;
+      updatePopulation();
+      saveGame();
+    }
+    updateUI();
+  }
+
+  // Show earnings popup
+  function showEarnings(){
+    earningsList.innerHTML = "";
+    const incomeMap = new Map();
+    cityGrid.forEach(tile => {
+      if(tile){
+        const bData = buildingsData[tile.buildingIndex];
+        if(!incomeMap.has(bData.name)){
+          incomeMap.set(bData.name, {income: 0, count: 0});
+        }
+        incomeMap.get(bData.name).income += bData.income[tile.level-1];
+        incomeMap.get(bData.name).count++;
+      }
+    });
+    if(incomeMap.size === 0){
+      const li = document.createElement("li");
+      li.textContent = "No income generating buildings yet.";
+      earningsList.appendChild(li);
+    } else {
+      incomeMap.forEach((val,key) => {
+        const li = document.createElement("li");
+        li.textContent = `${key} (${val.count}): $${val.income}/min`;
+        earningsList.appendChild(li);
+      });
+    }
+    earningsPopup.style.display = "flex";
+  }
+
+  // Close earnings popup
+  closeEarningsBtn.addEventListener("click", () => {
+    earningsPopup.style.display = "none";
+  });
+
+  // Close building popup
+  closeBuildingPopupBtn.addEventListener("click", closeBuildingPopup);
+
+  // Upgrade building button
+  upgradeBuildingBtn.addEventListener("click", upgradeBuilding);
+
+  // Delete building button
+  deleteBuildingBtn.addEventListener("click", () => {
+    if(buildingPopupIndex !== null) deleteBuildingAt(buildingPopupIndex);
+    closeBuildingPopup();
+  });
+
+  // Toggle delete mode button
+  deleteBtn.addEventListener("click", () => {
+    deleteMode = !deleteMode;
+    selectedBuilding = "";
+    buildingSelect.value = "";
+    updateUI();
+  });
+
+  // Building select dropdown
+  buildingSelect.addEventListener("change", e => {
+    selectedBuilding = e.target.value;
+    if(selectedBuilding !== "") deleteMode = false;
+    updateUI();
+  });
+
+  // Back to home button
+  backToHomeBtn.addEventListener("click", () => {
+    saveLastOnlineTime();  // Save current time before going home
+    gameScreen.style.display = "none";
+    homeScreen.style.display = "block";
+    buildingPopup.style.display = "none";
+    earningsPopup.style.display = "none";
+  });
+
+  // Start game button
+  startGameBtn.addEventListener("click", () => {
+    homeScreen.style.display = "none";
+
+    // Calculate offline earnings before showing game screen
+    handleOfflineEarnings();
+
+    gameScreen.style.display = "block";
+  });
+
+  // How to play button
+  howToPlayBtn.addEventListener("click", () => {
+    homeScreen.style.display = "none";
+    howToPlayScreen.style.display = "block";
+  });
+
+  // Back from how to play screen
+  backToHomeFromHowTo.addEventListener("click", () => {
+    howToPlayScreen.style.display = "none";
+    homeScreen.style.display = "block";
+  });
+
+  // Show earnings popup on button click
+  earningsBtn.addEventListener("click", showEarnings);
+
+  // Offline earnings popup elements and collect button
+  collectOfflineEarningsBtn.addEventListener("click", () => {
+    money += offlineEarningsAmount.value;
+    saveGame();
+    updateUI();
+    offlineEarningsPopup.style.display = "none";
+  });
+
+  // Track offline earnings value globally
+  offlineEarningsAmount.value = 0;
+
+  // Save last online time to localStorage
+  function saveLastOnlineTime(){
+    localStorage.setItem(LAST_ONLINE_TIME_KEY, Date.now());
+  }
+
+  // Handle offline earnings calculation and popup
+  function handleOfflineEarnings(){
+    const lastTimeStr = localStorage.getItem(LAST_ONLINE_TIME_KEY);
+    if(!lastTimeStr) return;
+    const lastTime = parseInt(lastTimeStr);
+    if(isNaN(lastTime)) return;
+
+    const now = Date.now();
+    const offlineMs = now - lastTime;
+    if(offlineMs < 1000) return; // ignore very short times
+
+    const offlineMinutes = offlineMs / 60000;
+
+    // Calculate income per minute online
+    const incomePerMinute = calculateIncome();
+    const offlineIncome = Math.floor(incomePerMinute * offlineMinutes * 0.10); // 10% offline earnings
+
+    if(offlineIncome > 0){
+      offlineEarningsAmount.value = offlineIncome;
+      document.getElementById("offlineEarningsAmount").textContent = `You earned $${offlineIncome} while offline!`;
+      offlineEarningsPopup.style.display = "flex";
+    }
+
+    // Reset last online time to now to avoid repeated calculation
+    localStorage.setItem(LAST_ONLINE_TIME_KEY, now);
+  }
+
+  // Initialize building selection dropdown and load/save game
+  populateBuildingSelect();
+
+  if(!loadGame()){
+    money = 1000;
+    population = 0;
+    paycheckTimer = 60;
+    deleteMode = false;
+    selectedBuilding = "";
+    cityGrid = new Array(gridSize * gridSize).fill(null);
+  }
+
+  updatePopulation();
+  updateUI();
+
+  // Start paycheck interval
+  setInterval(paycheckTick, 1000);
+
+</script>
+</body>
+</html>
